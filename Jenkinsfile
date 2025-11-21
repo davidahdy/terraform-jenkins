@@ -2,56 +2,56 @@ pipeline {
     agent any
 
     environment {
-        AWS_DEFAULT_REGION = 'us-east-1'
+        AWS_REGION = "us-east-1"     // Change to your region
+        TF_WORKDIR = "./"            // Terraform working directory
     }
 
     stages {
         stage('Checkout') {
             steps {
-                git branch: 'main', url: 'https://github.com/davidahdy/terraform-jenkins.git'
+                echo "Cloning repository..."
+                checkout([
+                    $class: 'GitSCM',
+                    branches: [[name: '*/main']],   // Change branch if needed
+                    userRemoteConfigs: [[url: 'https://github.com/davidahdy/terraform-jenkins.git']]
+                ])
             }
         }
 
+
+
         stage('Terraform Init') {
             steps {
-                sh 'terraform init'
+                dir("${TF_WORKDIR}") {
+                    sh 'terraform init -input=false'
+                }
             }
         }
 
         stage('Terraform Plan') {
             steps {
-                sh 'terraform plan -var-file=terraform.tfvars'
+                dir("${TF_WORKDIR}") {
+                    sh 'terraform plan -out=tfplan -input=false'
+                }
             }
         }
 
         stage('Terraform Apply') {
-            when {
-                expression { return params.APPLY == true }
-            }
             steps {
-                sh 'terraform apply -auto-approve -var-file=terraform.tfvars'
+                input message: 'Do you want to apply the Terraform plan?'
+                dir("${TF_WORKDIR}") {
+                    sh 'terraform apply -auto-approve tfplan'
+                }
             }
         }
-
-        stage('Terraform Destroy') {
-            when {
-                expression { return params.DESTROY == true }
-            }
-            steps {
-                sh 'terraform destroy -auto-approve -var-file=terraform.tfvars'
-            }
-        }
-    }
-
-    parameters {
-        booleanParam(name: 'APPLY', defaultValue: false, description: 'Run terraform apply')
-        booleanParam(name: 'DESTROY', defaultValue: false, description: 'Run terraform destroy')
     }
 
     post {
-        always {
-            echo 'Pipeline finished!'
+        success {
+            echo "✅ EKS cluster deployed successfully!"
+        }
+        failure {
+            echo "❌ Pipeline failed. Check logs."
         }
     }
 }
-
